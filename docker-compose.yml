@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # Video Ingest Service - Accepts uploads/URLs, extracts metadata
+  ingest:
+    build:
+      context: ./services/ingest
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - cn_media:/media
+      - ./services/ingest/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Transcription Service - Whisper-based speech-to-text
+  transcribe:
+    build:
+      context: ./services/transcribe
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - cn_media:/media
+      - ./services/transcribe/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+      - WHISPER_MODEL=base
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SmartCut Service - Silence/filler detection, cut suggestions
+  smartcut:
+    build:
+      context: ./services/smartcut
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    volumes:
+      - cn_media:/media
+      - ./services/smartcut/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Render Service - Apply cuts and export video
+  render:
+    build:
+      context: ./services/render
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    volumes:
+      - cn_media:/media
+      - ./services/render/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Captions Service - Generate and burn subtitles
+  captions:
+    build:
+      context: ./services/captions
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    volumes:
+      - cn_media:/media
+      - ./services/captions/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Scenes Detection Service - Detect scene changes, thumbnails
+  scenes:
+    build:
+      context: ./services/scenes
+      dockerfile: Dockerfile
+    ports:
+      - "8006:8006"
+    volumes:
+      - cn_media:/media
+      - ./services/scenes/main.py:/app/main.py:ro  # Dev mode
+    environment:
+      - MEDIA_BASE=/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # AI Edit Suggester Service - Generate edit suggestions (Phase 2)
+  # edit-suggester:
+  #   build:
+  #     context: ./services/edit-suggester
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8004:8004"
+  #   volumes:
+  #     - cn_media:/media
+  #   environment:
+  #     - MEDIA_BASE=/media
+  #     - LLM_PROVIDER=deepseek
+
+volumes:
+  cn_media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/gamtec1000/cn_media
+
+networks:
+  default:
+    name: cn_video_editor
